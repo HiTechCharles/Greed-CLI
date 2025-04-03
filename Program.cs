@@ -274,6 +274,7 @@ namespace Greed
         static void Main(string[] args)  //entrypoint of program
         {
             Console.Title = "Greed by Charles Martin"; //console window title
+            Console.ForegroundColor = ConsoleColor.White;  //text color for console
             WriteLog("This is a game of luck and skill.  First you roll a pair of dice.");
             WriteLog("Additional rolls add to your score, and you can stop at any");
             WriteLog("time.  If you repeat your first roll, you lose all points for");
