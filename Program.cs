@@ -1,296 +1,397 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Speech.Synthesis;
 
 namespace Greed
 {
     internal class Program
     {
-        #region PUBLIC VARIABLES
-        /*
-            round              each player rolls 10 times, starting at 1
-            diff               difference between scores
-            RollNum           number of dice rolls this turn
-            FDA, FDB         first roll dice
-            CDA, CDB         subsequent dice rolls
-            FTotal, CTotal  first, and current roll dice totals  
-            turn            keeps track of which player is rolling
-            RoundScore      score for current round
-            RNG             random number generator
-            */
-        public static int Round, Diff, RollNum, FDA, FDB, CDA, CDB, FTotal, CTotal, Turn, RoundScore;
-        public static uint seed = (uint)Math.Pow(System.DateTime.Now.TimeOfDay.TotalMilliseconds, 11.0 / 7.0);  //rng seed based on time of day
-        public static Random RNG = new Random((int)seed);  //create random number generator
+        private const int MaxRounds = 10;
+        private const int MinDieValue = 1;
+        private const int MaxDieValue = 7;
+        private const int PlayerCount = 2;
+        private const string PlayerTypeHuman = "Human";
+        private const string PlayerTypeComputer = "Computer";
 
-        struct PInfo  //stores player data
+        private static int round;
+        private static int rollNumber;
+        private static int firstDieA, firstDieB;
+        private static int currentDieA, currentDieB;
+        private static int firstTotal, currentTotal;
+        private static int currentPlayerIndex;
+        private static int roundScore;
+        private static readonly Random random = new Random();
+        private static bool textToSpeech = false;
+        private static SpeechSynthesizer greedTalk;
+
+        private class PlayerInfo
         {
-            public string Name;  //player name
-            public string PlayerType;  //human or computer
-            public int Score;  //current score
+            public string Name { get; set; }
+            public string PlayerType { get; set; }
+            public int Score { get; set; }
         }
 
-        static PInfo[] PlayerData = new PInfo[2];  //a 2 element array of playerinfo
-        #endregion
-
-        static void WriteLog(string msg = "")  //write to console.  default is blank line.
+        private static readonly PlayerInfo[] players = new PlayerInfo[PlayerCount]
         {
-            Console.WriteLine(msg);  //write to screen
-        }
+            new PlayerInfo(),
+            new PlayerInfo()
+        };
 
-        static void PressKey()  //press a key for next player's turn
+        private static void WriteLog(string message = "")
         {
-            int OTurn = 0;  //opposite player
-            switch (Turn)  
+            Console.WriteLine(message);
+            if (textToSpeech && !string.IsNullOrWhiteSpace(message))
             {
-                case 0:  //currently player 0, opposite is 1
-                    OTurn = 1;
-                    break;
-                case 1:
-                    OTurn = 0;  // current turn player 1, opposite 0
-                    break;
+                greedTalk.SpeakAsync(message);
             }
-            
-            //write press a key message with player's name
-            WriteLog("Press a key for " + PlayerData[OTurn].Name + "'s turn.");
-            Console.ReadKey(true);  //get a single keypress, 
         }
 
-        static void ScoreBlock()  //print score data to screen after each player takes a turn
+        private static void GetSpeechSetting()
         {
-            Console.Clear();  //clear console
-            WriteLog("Round " + Round + " of 10"); //wanna go 10 rounds? :)
-            WriteLog(PlayerData[0].Name + ": " + PlayerData[0].Score + ", " +  //write names and scores
-                PlayerData[1].Name + ": " + PlayerData[1].Score);
+            WriteLog("Would you like text-to-speech enabled? (Y/N) ");
+            ConsoleKeyInfo keyInfo;
 
-            if (PlayerData[0].Score > PlayerData[1].Score)  //determine who is leading
+            while (true)
             {
-                Diff = PlayerData[0].Score - PlayerData[1].Score;  //p1>p2
-                WriteLog(PlayerData[0].Name + " up by " + Diff);
+                keyInfo = Console.ReadKey(true);
+                switch (char.ToLower(keyInfo.KeyChar))
+                {
+                    case 'y':
+                        textToSpeech = true;
+                        greedTalk = new SpeechSynthesizer();
+                        greedTalk.Rate = 3;
+                        greedTalk.Volume = 100;
+                        WriteLog("Text-to-speech enabled.");
+                        return;
+                    case 'n':
+                        textToSpeech = false;
+                        WriteLog("Text-to-speech disabled.");
+                        return;
+                }
             }
-            else if (PlayerData[1].Score > PlayerData[0].Score)  //p2>p1
+        }
+
+        private static void PressKeyForNextPlayer()
+        {
+            int nextPlayerIndex = (currentPlayerIndex + 1) % PlayerCount;
+            WriteLog($"Press a key for {players[nextPlayerIndex].Name}'s turn.");
+            Console.ReadKey(true);
+        }
+
+        private static void DisplayScores(bool isFinal = false)
+        {
+            if (!isFinal)
             {
-                Diff = PlayerData[1].Score - PlayerData[0].Score;
-                WriteLog(PlayerData[1].Name + " up by " + Diff);
+                Console.Clear();
+                WriteLog($"Round {round} of {MaxRounds}");
+            }
+
+            WriteLog($"{players[0].Name}: {players[0].Score}, {players[1].Name}: {players[1].Score}");
+
+            int difference = Math.Abs(players[0].Score - players[1].Score);
+
+            if (players[0].Score > players[1].Score)
+            {
+                string verb = isFinal ? "won" : "up";
+                WriteLog($"{players[0].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
+            }
+            else if (players[1].Score > players[0].Score)
+            {
+                string verb = isFinal ? "won" : "up";
+                WriteLog($"{players[1].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
             }
             else
             {
-                WriteLog("Tie Game!");  //tie game
+                WriteLog("Tie Game!");
             }
         }
 
-        static void ComputerRoll()  //performs rolls for computer players
+        private static bool CheckForBust(int rollNum, int firstRoll, int currentRoll)
         {
-            FDA = RNG.Next(1, 7);
-            FDB = RNG.Next(1, 7);  //roll first 2 dice
-            FTotal = FDA + FDB;  //first roll total
-            RoundScore = FTotal;  //each successful dice roll total adds to score including first
-
-            //write first roll to console
-            WriteLog("Roll 1: " + FDA + " & " + FDB + " - Total " + FTotal);
-
-            //for computer players, FTotal is the number of dice rolls they do.
-            for (RollNum = 2; RollNum <= FTotal+1; RollNum++)
+            if (currentRoll == firstRoll)
             {
-                CDA = RNG.Next(1, 7);  //roll second pair of dice until busted or loop ends
-                CDB = RNG.Next(1, 7);
-                CTotal = CDA + CDB;  //current roll total
-                //write dice roll
-                WriteLog("Roll " + RollNum + ":  " + CDA + " & " + CDB + " - Total " + CTotal);
-
-                if (CTotal == FTotal)  //if first roll = other dice roll, turn over
-                {
-                    WriteLog("BUSTED!  No points scored.");
-                    PressKey();  //press a key for other player's turn
-                    return;  //end function immediately
-                }
-                else
-                {
-                    RoundScore += CTotal;  //each successful dice roll total adds to score including first
-                }  //end if
-
-            }  //end for.    error } expected?  Where?  I can't see!
-            PlayerData[Turn].Score += RoundScore;  //add round score to player's total score
-            //show points scored this round
-            WriteLog(PlayerData[Turn].Name + " scored " + RoundScore + " points.");
-            PressKey();  //press key for next player
+                WriteLog("BUSTED! No points scored.");
+                PressKeyForNextPlayer();
+                return true;
+            }
+            return false;
         }
 
-        static void GameLoop()  //main game loop
+        /// <summary>
+        /// Calculates the probability of rolling a specific total with 2 dice
+        /// </summary>
+        private static double CalculateBustProbability(int targetTotal)
         {
-            for (Round = 1; Round < 11; Round++)  //each player gets 10 turns
+            int ways = 0;
+            int totalOutcomes = (MaxDieValue - MinDieValue) * (MaxDieValue - MinDieValue);
+
+            for (int die1 = MinDieValue; die1 < MaxDieValue; die1++)
             {
-                Turn = 0;   //first player up  (get the zero turn John Deer mower)
-                ScoreBlock();  //display scores
-                WriteLog();  //blank line
-                WriteLog(PlayerData[0].Name + "'s Turn");
-
-                //run the appropriate function for human or computer input
-                if (PlayerData[0].PlayerType == "Computer")
+                for (int die2 = MinDieValue; die2 < MaxDieValue; die2++)
                 {
-                    ComputerRoll();  //first player is a computer  (KITT, HAL9000)
+                    if (die1 + die2 == targetTotal)
+                    {
+                        ways++;
+                    }
                 }
-                else
+            }
+
+            return (double)ways / totalOutcomes;
+        }
+
+        /// <summary>
+        /// AI decision logic for whether to continue rolling
+        /// </summary>
+        private static bool ComputerShouldContinue(int rollsRemaining, int currentRoundScore)
+        {
+            double bustProbability = CalculateBustProbability(firstTotal);
+            int opponentIndex = (currentPlayerIndex + 1) % PlayerCount;
+            int scoreDifference = players[currentPlayerIndex].Score - players[opponentIndex].Score;
+
+            // Base threshold: higher means more conservative
+            double stopThreshold = 0.2;
+
+            // Adjust strategy based on score difference
+            if (scoreDifference < -50)
+            {
+                stopThreshold = 0.7; // Far behind - take more risks
+            }
+            else if (scoreDifference < -20)
+            {
+                stopThreshold = 0.6; // Behind - slightly more aggressive
+            }
+            else if (scoreDifference > 50)
+            {
+                stopThreshold = 0.3; // Far ahead - play it safe
+            }
+            else if (scoreDifference > 20)
+            {
+                stopThreshold = 0.4; // Ahead - more conservative
+            }
+
+            // Late game adjustment
+            if (round >= MaxRounds - 2)
+            {
+                if (scoreDifference < 0)
                 {
-                    HumanRoll(); //first player is human
+                    stopThreshold += 0.1; // Behind in late game - more aggressive
+                }
+                else if (scoreDifference > 0)
+                {
+                    stopThreshold -= 0.1; // Ahead in late game - more conservative
+                }
+            }
+
+            // Factor in current round score value
+            double scoreValue = currentRoundScore / 100.0;
+
+            // Risk assessment: higher values mean should stop
+            double riskFactor = bustProbability * (rollsRemaining + 1) + (scoreValue * 0.1);
+
+            // Add some randomness to make AI less predictable (±0.1)
+            double randomFactor = (random.NextDouble() * 0.2) - 0.1;
+            riskFactor += randomFactor;
+
+            // Decision: continue if risk is below threshold
+            bool shouldContinue = riskFactor < stopThreshold;
+
+            // Always roll at least twice if we have rolls remaining
+            if (rollNumber == 2 && rollsRemaining > 0)
+            {
+                shouldContinue = true;
+            }
+
+            return shouldContinue;
+        }
+
+        private static void ComputerRoll()
+        {
+            firstDieA = random.Next(MinDieValue, MaxDieValue);
+            firstDieB = random.Next(MinDieValue, MaxDieValue);
+            firstTotal = firstDieA + firstDieB;
+            roundScore = firstTotal;
+
+            WriteLog($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
+
+            int maxRolls = firstTotal + 1;
+            rollNumber = 2;
+
+            while (rollNumber <= maxRolls)
+            {
+                int rollsRemaining = maxRolls - rollNumber + 1;
+
+                if (!ComputerShouldContinue(rollsRemaining, roundScore))
+                {
+                    WriteLog($"{players[currentPlayerIndex].Name} decides to stop rolling.");
+                    break;
                 }
 
-                Turn = 1;  //second player
-                ScoreBlock();
-                WriteLog();
-                WriteLog(PlayerData[1].Name + "'s Turn");
+                System.Threading.Thread.Sleep(800); // Pause for dramatic effect
 
-                if (PlayerData[1].PlayerType == "Computer")
+                currentDieA = random.Next(MinDieValue, MaxDieValue);
+                currentDieB = random.Next(MinDieValue, MaxDieValue);
+                currentTotal = currentDieA + currentDieB;
+
+                WriteLog($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
+
+                if (CheckForBust(rollNumber, firstTotal, currentTotal))
                 {
-                    ComputerRoll();  //Second player is a computer  (ENIAC, Apple IIe Platinum)
+                    return;
                 }
-                else
+
+                roundScore += currentTotal;
+                rollNumber++;
+            }
+
+            players[currentPlayerIndex].Score += roundScore;
+            WriteLog($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
+            PressKeyForNextPlayer();
+        }
+
+        private static void HumanRoll()
+        {
+            firstDieA = random.Next(MinDieValue, MaxDieValue);
+            firstDieB = random.Next(MinDieValue, MaxDieValue);
+            firstTotal = firstDieA + firstDieB;
+            roundScore = firstTotal;
+            rollNumber = 2;
+
+            WriteLog($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
+
+            int maxRolls = firstTotal + 1;
+
+            while (rollNumber <= maxRolls)
+            {
+                WriteLog($"Press any key to roll again, or 'S' to stop and keep {roundScore} points.");
+                ConsoleKeyInfo keyInfo = Console.ReadKey(true);
+
+                if (keyInfo.KeyChar == 's' || keyInfo.KeyChar == 'S')
                 {
-                    HumanRoll();
+                    break;
+                }
+
+                currentDieA = random.Next(MinDieValue, MaxDieValue);
+                currentDieB = random.Next(MinDieValue, MaxDieValue);
+                currentTotal = currentDieA + currentDieB;
+
+                WriteLog($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
+
+                if (CheckForBust(rollNumber, firstTotal, currentTotal))
+                {
+                    return;
+                }
+
+                roundScore += currentTotal;
+                rollNumber++;
+            }
+
+            players[currentPlayerIndex].Score += roundScore;
+            WriteLog($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
+            PressKeyForNextPlayer();
+        }
+
+        private static void GameLoop()
+        {
+            for (round = 1; round <= MaxRounds; round++)
+            {
+                for (currentPlayerIndex = 0; currentPlayerIndex < PlayerCount; currentPlayerIndex++)
+                {
+                    DisplayScores();
+                    WriteLog();
+                    WriteLog($"{players[currentPlayerIndex].Name}'s Turn");
+
+                    if (players[currentPlayerIndex].PlayerType == PlayerTypeComputer)
+                    {
+                        ComputerRoll();
+                    }
+                    else
+                    {
+                        HumanRoll();
+                    }
                 }
             }
         }
 
-        static void EndGame() //show final scores and the game winner
+        private static void EndGame()
         {
             WriteLog("FINAL SCORES:");
             WriteLog();
-
-            //same as ScoreBlock();  didn't use it because it shows the round and clears the screen
-            WriteLog(PlayerData[0].Name + ": " + PlayerData[0].Score + ", " +  //write names and scores
-                PlayerData[1].Name + ": " + PlayerData[1].Score);
-
-            if (PlayerData[0].Score > PlayerData[1].Score)  //determine who is leading
-            {
-                Diff = PlayerData[0].Score - PlayerData[1].Score;  //p1>p2
-                WriteLog(PlayerData[0].Name + " won by " + Diff + " points.");
-            }
-            else if (PlayerData[1].Score > PlayerData[0].Score)  //p2>p1
-            {
-                Diff = PlayerData[1].Score - PlayerData[0].Score;
-                WriteLog(PlayerData[1].Name + " won by " + Diff + " points.");
-            }
-            else
-            {
-                WriteLog("Tie Game!");  //tie game
-            }
+            DisplayScores(isFinal: true);
         }
 
-        static void HumanRoll()  //roll dice and take input for humans
+        private static void GetPlayerName(int playerIndex)
         {
-            //variables and structure are nearly identical
-            FDA = RNG.Next(1, 7);
-            FDB = RNG.Next(1, 7);  //roll first 2 dice
-            FTotal = FDA + FDB;  //first roll total
-            RoundScore = FTotal;  //each successful dice roll total adds to score including first
-            bool TurnOver = false;  //is human done with their turn?
-            RollNum = 2;  //number of dice rolls this turn
-
-            WriteLog("Roll 1: " + FDA + " & " + FDB + " - Total " + FTotal);
+            int displayNumber = playerIndex + 1;
+            string input;
 
             do
             {
-                CDA = RNG.Next(1, 7);
-                CDB = RNG.Next(1, 7);
-                CTotal = CDA + CDB;
-                WriteLog("Roll " + RollNum + ":  " + CDA + " & " + CDB + " - Total " + CTotal);
+                Console.Write($"\nName of Player {displayNumber}: ");
+                input = Console.ReadLine()?.Trim();
 
-                if (CTotal == FTotal)  //if first roll = other dice roll, turn over
+                if (string.IsNullOrWhiteSpace(input))
                 {
-                    WriteLog("BUSTED!  No points scored.");
-                    PressKey();
-                    return;  //end function immediately
+                    WriteLog($"Please give a name for player {displayNumber}");
                 }
-                else
-                {
-                    RoundScore += CTotal;  //each successful dice roll total adds to score including first
-                    RollNum++;
-                }  //end if
-                ConsoleKeyInfo keyInfo = Console.ReadKey(true);  //get single keypress
-                switch (keyInfo.KeyChar)
-                {
-                    case 's':  //end turn
-                        TurnOver = true;
-                        break;
-                    case 'S':  //end turn
-                        TurnOver = true;
-                        break;
-                    default:
-                        TurnOver = false;  //keep playing
-                        break;
-                }
-            }   while ( TurnOver ==  false );  //loop while turnover == false
-            PlayerData[Turn].Score += RoundScore;
-            WriteLog(PlayerData[Turn].Name + " scored " + RoundScore + " points.");
-            PressKey();
-            
+            } while (string.IsNullOrWhiteSpace(input));
+
+            players[playerIndex].Name = input;
         }
 
-        static void GetName(int Player)  //get a player's name
+        private static void GetPlayerType(int playerIndex)
         {
-            string Line;  //input from user
-            int pn = Player + 1;  //makes it player 1 instead of 0 when printing
-            Console.Write("\nName of Player " + pn + ":  ");             
-            Line = Console.ReadLine();  //get line of input
-            Line = Line.Trim();  //remove spaces from ends
-            if (Line.Length > 0)  // if name input is not blank
-            {
-                PlayerData[Player].Name = Line;  //store name in struct
-            }
-            else
-            {
-                WriteLog("Please give a name for player " + pn);
-                GetName(Player);  //relaunch function
-            }
-        }
-
-        static void GetType(int Player)  //get player type human or computer
-        {
-            int pn = Player + 1;  //1's base player number
             WriteLog();
-            Console.Write("Is " + PlayerData[Player].Name + " a Human or Computer Player? (H/C)  ");
-            ConsoleKeyInfo keyInfo = Console.ReadKey(true);  //get single key
-            switch (keyInfo.KeyChar)
+            Console.Write($"Is {players[playerIndex].Name} a Human or Computer Player? (H/C) ");
+
+            ConsoleKeyInfo keyInfo;
+            while (true)
             {
-                case 'h':  //human
-                    PlayerData[Player].PlayerType = "Human";  //store type
-                    WriteLog("Human");  //wite selection to screen
-                    break;
-                case 'H':
-                    PlayerData[Player].PlayerType = "Human";
-                    WriteLog("Human");
-                    break;
-                case 'c':
-                    PlayerData[Player].PlayerType = "Computer";  //computer
-                    WriteLog("Computer");
-                    break;
-                case 'C':
-                    PlayerData[Player].PlayerType = "Computer";
-                    WriteLog("Computer");
-                    break;
-                default:
-                    GetType(Player);  //not h or c, try again
-                    break;
-            }            
+                keyInfo = Console.ReadKey(true);
+
+                switch (char.ToLower(keyInfo.KeyChar))
+                {
+                    case 'h':
+                        players[playerIndex].PlayerType = PlayerTypeHuman;
+                        WriteLog("Human");
+                        return;
+                    case 'c':
+                        players[playerIndex].PlayerType = PlayerTypeComputer;
+                        WriteLog("Computer");
+                        return;
+                }
+            }
         }
 
-        static void Main(string[] args)  //entrypoint of program
+        private static void Main(string[] args)
         {
-            Console.Title = "Greed by Charles Martin"; //console window title
-            Console.ForegroundColor = ConsoleColor.White;  //text color for console
-            WriteLog("This is a game of luck and skill.  First you roll a pair of dice.");
+            Console.Title = "Greed by Charles Martin";
+            Console.ForegroundColor = ConsoleColor.White;
+
+            WriteLog("This is a game of luck and skill. First you roll a pair of dice.");
             WriteLog("Additional rolls add to your score, and you can stop at any");
-            WriteLog("time.  If you repeat your first roll, you lose all points for");
-            WriteLog("the round.  The winner is the player with the highest score");
-            WriteLog();  //explain the game
+            WriteLog("time. If you repeat your first roll, you lose all points for");
+            WriteLog("the round. The winner is the player with the highest score.");
+            WriteLog();
             WriteLog("During a human player's turn, press the 's' key to end your turn.");
 
-            GetName(0);  //get names and types for both players
-            GetType(0);
-            GetName(1);
-            GetType(1);
-            
-            GameLoop();  //start the game
-            EndGame();  //end of game
+            for (int i = 0; i < PlayerCount; i++)
+            {
+                GetPlayerName(i);
+                GetPlayerType(i);
+            }
 
-            Console.ReadKey(true);  //make sure final output is shown before console window closes
+            GetSpeechSetting();
+
+            GameLoop();
+            EndGame();
+
+            // Proper cleanup of disposable resources
+            if (greedTalk != null)
+            {
+                greedTalk.Dispose();
+            }
+
+            Console.ReadKey(true);
         }
     }
 }
