@@ -1,18 +1,28 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
+using System.Diagnostics.Eventing.Reader;
+using System.IO;
+using System.Security.Policy;
 using System.Speech.Synthesis;
 
 namespace Greed
 {
     internal class Program
     {
+        #region constants and fields
+        private static string ApplicationDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Greed");
+
         private const int MaxRounds = 10;
         private const int MinDieValue = 1;
         private const int MaxDieValue = 7;
         private const int PlayerCount = 2;
         private const string PlayerTypeHuman = "Human";
         private const string PlayerTypeComputer = "Computer";
-
+        private const int SpeechRate = 3;
+        private const int SpeechVolume = 100;
+        private static readonly string LastGameFile  = Path.Combine(ApplicationDirectory, "last game.txt");   
+        private static readonly string FullLogFile = Path.Combine(ApplicationDirectory, "full log.txt");
+        private static readonly string OptionsFile = Path.Combine(ApplicationDirectory, "options.txt");
+        
         private static int round;
         private static int rollNumber;
         private static int firstDieA, firstDieB;
@@ -23,6 +33,7 @@ namespace Greed
         private static readonly Random random = new Random();
         private static bool textToSpeech = false;
         private static SpeechSynthesizer greedTalk;
+#endregion
 
         private class PlayerInfo
         {
@@ -37,36 +48,89 @@ namespace Greed
             new PlayerInfo()
         };
 
-        private static void WriteLog(string message = "")
+        private static void WriteLog(string message = "", bool SameLine = false)
         {
-            Console.WriteLine(message);
+            if (SameLine)
+            {
+                Console.Write(message);
+            }
+            else
+            {
+                Console.WriteLine(message);
+            }
+
             if (textToSpeech && !string.IsNullOrWhiteSpace(message))
             {
                 greedTalk.SpeakAsync(message);
             }
         }
 
-        private static void GetSpeechSetting()
+        private static bool YesNoPrompt(string prompt)
         {
-            WriteLog("Would you like text-to-speech enabled? (Y/N) ");
-            ConsoleKeyInfo keyInfo;
-
-            while (true)
+            WriteLog(prompt, true);
+            ConsoleKeyInfo keyInfo = Console.ReadKey(true);
+            return keyInfo.Key == ConsoleKey.Y ? true : false;
+        }
+        
+        private static void AskToggleSpeech()
+        {
+            if (textToSpeech)
             {
-                keyInfo = Console.ReadKey(true);
-                switch (char.ToLower(keyInfo.KeyChar))
+                Console.WriteLine();
+                bool response = YesNoPrompt("Text-to-Speech is currently enabled. Would you like to disable it? (Y/N)\");");
+                               
+                if (response)
                 {
-                    case 'y':
-                        textToSpeech = true;
-                        greedTalk = new SpeechSynthesizer();
-                        greedTalk.Rate = 3;
-                        greedTalk.Volume = 100;
-                        WriteLog("Text-to-speech enabled.");
-                        return;
-                    case 'n':
-                        textToSpeech = false;
-                        WriteLog("Text-to-speech disabled.");
-                        return;
+                    textToSpeech = false;
+                }
+            }
+            else
+            {
+                Console.WriteLine();
+                bool response = YesNoPrompt("Text-to-Speech is currently disabled. Would you like to enable it? (Y/N)\");");
+                if (response)
+                {
+                    textToSpeech = true;
+                }
+            }
+            SaveOptions();
+        }
+
+        private static void SaveOptions()
+        {
+            using (StreamWriter writer = new StreamWriter(OptionsFile, false))
+
+            {
+                writer.WriteLine($"TextToSpeech={textToSpeech}");
+            }
+        }
+
+        private static void InitializeSpeechSynthesizer()
+        {
+            if (textToSpeech)
+            {
+                greedTalk = new SpeechSynthesizer
+                {
+                    Rate = SpeechRate,
+                    Volume = SpeechVolume
+                };
+            }
+        }
+
+        private static void LoadOptions()
+        {
+            if (File.Exists(OptionsFile))
+            {
+                using (StreamReader reader = new StreamReader(OptionsFile))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.StartsWith("TextToSpeech="))
+                        {
+                            textToSpeech = line.Substring("TextToSpeech=".Length).Trim().ToLower() == "true";
+                        }
+                    }
                 }
             }
         }
@@ -262,7 +326,9 @@ namespace Greed
 
             while (rollNumber <= maxRolls)
             {
-                WriteLog($"Press any key to roll again, or 'S' to stop and keep {roundScore} points.");
+                WriteLog($"Press any key to roll again, or 'S' to"); 
+                WriteLog($"stop and keep {roundScore} points.");
+                Console.WriteLine();
                 ConsoleKeyInfo keyInfo = Console.ReadKey(true);
 
                 if (keyInfo.KeyChar == 's' || keyInfo.KeyChar == 'S')
@@ -274,6 +340,8 @@ namespace Greed
                 currentDieB = random.Next(MinDieValue, MaxDieValue);
                 currentTotal = currentDieA + currentDieB;
 
+                
+                
                 WriteLog($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
 
                 if (CheckForBust(rollNumber, firstTotal, currentTotal))
@@ -297,7 +365,7 @@ namespace Greed
                 for (currentPlayerIndex = 0; currentPlayerIndex < PlayerCount; currentPlayerIndex++)
                 {
                     DisplayScores();
-                    WriteLog();
+                    Console.WriteLine();
                     WriteLog($"{players[currentPlayerIndex].Name}'s Turn");
 
                     if (players[currentPlayerIndex].PlayerType == PlayerTypeComputer)
@@ -315,7 +383,7 @@ namespace Greed
         private static void EndGame()
         {
             WriteLog("FINAL SCORES:");
-            WriteLog();
+            Console.WriteLine();
             DisplayScores(isFinal: true);
         }
 
@@ -326,12 +394,13 @@ namespace Greed
 
             do
             {
-                Console.Write($"\nName of Player {displayNumber}: ");
+                Console.WriteLine();
+                WriteLog($"Name of Player {displayNumber}: ", true);
                 input = Console.ReadLine()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(input))
                 {
-                    WriteLog($"Please give a name for player {displayNumber}");
+                    WriteLog($"Please give a name for player {displayNumber}"); return;
                 }
             } while (string.IsNullOrWhiteSpace(input));
 
@@ -340,8 +409,8 @@ namespace Greed
 
         private static void GetPlayerType(int playerIndex)
         {
-            WriteLog();
-            Console.Write($"Is {players[playerIndex].Name} a Human or Computer Player? (H/C) ");
+            Console.WriteLine();
+            WriteLog($"Is {players[playerIndex].Name} a Human or Computer Player? (H/C) ", true);
 
             ConsoleKeyInfo keyInfo;
             while (true)
@@ -367,20 +436,25 @@ namespace Greed
             Console.Title = "Greed by Charles Martin";
             Console.ForegroundColor = ConsoleColor.White;
 
+            Directory.CreateDirectory(ApplicationDirectory);
+            
+            LoadOptions();
+            InitializeSpeechSynthesizer();
+            AskToggleSpeech();
+            
+
+            Console.WriteLine();
             WriteLog("This is a game of luck and skill. First you roll a pair of dice.");
             WriteLog("Additional rolls add to your score, and you can stop at any");
             WriteLog("time. If you repeat your first roll, you lose all points for");
             WriteLog("the round. The winner is the player with the highest score.");
-            WriteLog();
-            WriteLog("During a human player's turn, press the 's' key to end your turn.");
+            Console.WriteLine();
 
             for (int i = 0; i < PlayerCount; i++)
             {
                 GetPlayerName(i);
                 GetPlayerType(i);
             }
-
-            GetSpeechSetting();
 
             GameLoop();
             EndGame();
