@@ -17,7 +17,7 @@ namespace Greed
         private const int PlayerCount = 2;
         private const string PlayerTypeHuman = "Human";
         private const string PlayerTypeComputer = "Computer";
-        private const int SpeechRate = 3;
+        private const int SpeechRate = 4;
         private const int SpeechVolume = 100;
         private static readonly string LastGameFile  = Path.Combine(ApplicationDirectory, "last game.txt");   
         private static readonly string FullLogFile = Path.Combine(ApplicationDirectory, "full log.txt");
@@ -59,7 +59,7 @@ namespace Greed
                 Console.WriteLine(message);
             }
 
-            if (textToSpeech && !string.IsNullOrWhiteSpace(message))
+            if (textToSpeech && greedTalk != null && !string.IsNullOrWhiteSpace(message))
             {
                 greedTalk.SpeakAsync(message);
             }
@@ -71,30 +71,9 @@ namespace Greed
             ConsoleKeyInfo keyInfo = Console.ReadKey(true);
             return keyInfo.Key == ConsoleKey.Y ? true : false;
         }
-        
-        private static void AskToggleSpeech()
-        {
-            if (textToSpeech)
-            {
-                Console.WriteLine();
-                bool response = YesNoPrompt("Text-to-Speech is currently enabled. Would you like to disable it? (Y/N)\");");
-                               
-                if (response)
-                {
-                    textToSpeech = false;
-                }
-            }
-            else
-            {
-                Console.WriteLine();
-                bool response = YesNoPrompt("Text-to-Speech is currently disabled. Would you like to enable it? (Y/N)\");");
-                if (response)
-                {
-                    textToSpeech = true;
-                }
-            }
-            SaveOptions();
-        }
+
+        // Original AskToggleSpeech removed. Use AskToggleSpeechSafe instead.
+
 
         private static void SaveOptions()
         {
@@ -208,58 +187,83 @@ namespace Greed
         /// </summary>
         private static bool ComputerShouldContinue(int rollsRemaining, int currentRoundScore)
         {
-            double bustProbability = CalculateBustProbability(firstTotal);
+            // Improved decision based on expected value (EV) of continuing versus stopping.
+            // Compute bust probability for the "firstTotal" and the expected roll total when not busting.
+            double pBust = CalculateBustProbability(firstTotal);
+
+            // Compute distribution statistics for two dice to get expected non-bust total
+            int waysTarget = 0;
+            double sumAll = 0.0;
+            int totalOutcomes = (MaxDieValue - MinDieValue) * (MaxDieValue - MinDieValue);
+
+            for (int d1 = MinDieValue; d1 < MaxDieValue; d1++)
+            {
+                for (int d2 = MinDieValue; d2 < MaxDieValue; d2++)
+                {
+                    int tot = d1 + d2;
+                    sumAll += tot;
+                    if (tot == firstTotal) waysTarget++;
+                }
+            }
+
+            double expectedNonBustTotal = 0.0;
+            if (totalOutcomes - waysTarget > 0)
+            {
+                expectedNonBustTotal = (sumAll - (waysTarget * firstTotal)) / (totalOutcomes - waysTarget);
+            }
+
+            // Expected value if AI commits to attempting all remaining rolls (survive all):
+            // EV = P(survive all) * (currentRoundScore + expectedNonBustTotal * rollsRemaining)
+            double pSurviveAll = Math.Pow(1.0 - pBust, Math.Max(0, rollsRemaining));
+            double evIfCommitAll = pSurviveAll * (currentRoundScore + expectedNonBustTotal * rollsRemaining);
+
+            // Also consider single-roll lookahead (safer estimate):
+            double evIfOneMore = (1.0 - pBust) * (currentRoundScore + expectedNonBustTotal);
+
+            // Base decision: continue if either one-roll EV or full-commit EV is better than stopping now.
+            bool shouldContinue = evIfOneMore > currentRoundScore || evIfCommitAll > currentRoundScore;
+
+            // Adjust behavior based on score difference and late game urgency
             int opponentIndex = (currentPlayerIndex + 1) % PlayerCount;
             int scoreDifference = players[currentPlayerIndex].Score - players[opponentIndex].Score;
 
-            // Base threshold: higher means more conservative
-            double stopThreshold = 0.2;
-
-            // Adjust strategy based on score difference
+            // If far behind, bias toward taking more risks
             if (scoreDifference < -50)
             {
-                stopThreshold = 0.7; // Far behind - take more risks
+                shouldContinue = shouldContinue || (evIfOneMore > currentRoundScore * 0.9);
             }
             else if (scoreDifference < -20)
             {
-                stopThreshold = 0.6; // Behind - slightly more aggressive
-            }
-            else if (scoreDifference > 50)
-            {
-                stopThreshold = 0.3; // Far ahead - play it safe
-            }
-            else if (scoreDifference > 20)
-            {
-                stopThreshold = 0.4; // Ahead - more conservative
+                shouldContinue = shouldContinue || (evIfOneMore > currentRoundScore * 0.95);
             }
 
-            // Late game adjustment
+            // If far ahead, be more conservative
+            if (scoreDifference > 50)
+            {
+                shouldContinue = shouldContinue && (pBust < 0.2);
+            }
+
+            // Late-game: if behind, be more aggressive; if ahead, be more conservative
             if (round >= MaxRounds - 2)
             {
                 if (scoreDifference < 0)
                 {
-                    stopThreshold += 0.1; // Behind in late game - more aggressive
+                    shouldContinue = shouldContinue || (evIfOneMore > currentRoundScore * 0.85);
                 }
                 else if (scoreDifference > 0)
                 {
-                    stopThreshold -= 0.1; // Ahead in late game - more conservative
+                    shouldContinue = shouldContinue && (evIfOneMore > currentRoundScore * 1.05);
                 }
             }
 
-            // Factor in current round score value
-            double scoreValue = currentRoundScore / 100.0;
-
-            // Risk assessment: higher values mean should stop
-            double riskFactor = bustProbability * (rollsRemaining + 1) + (scoreValue * 0.1);
-
-            // Add some randomness to make AI less predictable (±0.1)
+            // Add small randomness so the AI is not deterministic
             double randomFactor = (random.NextDouble() * 0.2) - 0.1;
-            riskFactor += randomFactor;
+            if (randomFactor > 0.08)
+            {
+                shouldContinue = !shouldContinue;
+            }
 
-            // Decision: continue if risk is below threshold
-            bool shouldContinue = riskFactor < stopThreshold;
-
-            // Always roll at least twice if we have rolls remaining
+            // Always roll at least twice if this is the second roll and there are rolls remaining
             if (rollNumber == 2 && rollsRemaining > 0)
             {
                 shouldContinue = true;
@@ -326,8 +330,8 @@ namespace Greed
 
             while (rollNumber <= maxRolls)
             {
-                WriteLog($"Press any key to roll again, or 'S' to"); 
-                WriteLog($"stop and keep {roundScore} points.");
+                WriteLog($"Press any key to roll again,"); 
+                WriteLog($" or 'S' to stop and keep {roundScore} points.");
                 Console.WriteLine();
                 ConsoleKeyInfo keyInfo = Console.ReadKey(true);
 
@@ -431,6 +435,60 @@ namespace Greed
             }
         }
 
+        private static void AskToggleSpeechSafe()
+        {
+            try
+            {
+                bool enable = YesNoPrompt("Enable text-to-speech? (Y/N) ");
+
+                if (enable)
+                {
+                    // If already initialized, keep it; otherwise attempt to (re)initialize safely.
+                    if (!textToSpeech || greedTalk == null)
+                    {
+                        try
+                        {
+                            greedTalk?.Dispose();
+                            greedTalk = new SpeechSynthesizer
+                            {
+                                Rate = SpeechRate,
+                                Volume = SpeechVolume
+                            };
+                            textToSpeech = true;
+                            greedTalk.SpeakAsync("Text to speech enabled.");
+                        }
+                        catch (Exception ex)
+                        {
+                            // Initialization failed; disable TTS to avoid later NullReference.
+                            textToSpeech = false;
+                            greedTalk = null;
+                            WriteLog($"Unable to initialize text-to-speech: {ex.Message}");
+                        }
+                    }
+                }
+                else
+                {
+                    // User chose to disable TTS
+                    textToSpeech = false;
+                    if (greedTalk != null)
+                    {
+                        greedTalk.Dispose();
+                        greedTalk = null;
+                    }
+                }
+
+                SaveOptions();
+            }
+            catch (Exception ex)
+            {
+                // Catch-all safety to ensure application remains usable even if something goes wrong.
+                textToSpeech = false;
+                greedTalk = null;
+                WriteLog($"Text-to-speech toggle failed: {ex.Message}");
+                SaveOptions();
+            }
+        }
+
         private static void Main(string[] args)
         {
             Console.Title = "Greed by Charles Martin";
@@ -440,7 +498,16 @@ namespace Greed
             
             LoadOptions();
             InitializeSpeechSynthesizer();
-            AskToggleSpeech();
+            AskToggleSpeechSafe();
+
+            // Fail-safe: if the user enabled text-to-speech but the
+            // synthesizer failed to initialize, disable the option to
+            // avoid NullReferenceException later.
+            if (textToSpeech && greedTalk == null)
+            {
+                textToSpeech = false;
+                WriteLog("Text-to-speech could not be initialized and has been disabled.");
+            }
             
 
             Console.WriteLine();
