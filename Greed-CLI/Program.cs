@@ -69,9 +69,6 @@ namespace Greed_CLI
             return keyInfo.Key == ConsoleKey.Y ? true : false;
         }
 
-        // Original AskToggleSpeech removed. Use AskToggleSpeechSafe instead.
-
-
         private static void SaveOptions()
         {
             using (StreamWriter writer = new StreamWriter(OptionsFile, false))
@@ -114,7 +111,15 @@ namespace Greed_CLI
         private static void PressKeyForNextPlayer()
         {
             int nextPlayerIndex = (currentPlayerIndex + 1) % PlayerCount;
-            WriteLog($"Press a key for {players[nextPlayerIndex].Name}'s turn.");
+
+            if (nextPlayerIndex == 2 && round == 10)
+            {
+                WriteLog("Press a key  for final Scores.");
+            }
+            else
+            {
+                WriteLog($"Press a key for {players[nextPlayerIndex].Name}'s turn.");
+            }
             Console.ReadKey(true);
         }
 
