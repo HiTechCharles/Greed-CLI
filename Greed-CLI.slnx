@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../ShadowFlame/ShadowFlame/ShadowFlame.csproj" />
   <Project Path="Greed-CLI/Greed-CLI.csproj" />
 </Solution>

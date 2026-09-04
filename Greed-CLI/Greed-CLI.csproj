@@ -2,14 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RootNamespace>Greed_CLI</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.Speech" Version="10.0.11" />
+    <ProjectReference Include="..\..\ShadowFlame\ShadowFlame\ShadowFlame.csproj" />
   </ItemGroup>
 
 </Project>

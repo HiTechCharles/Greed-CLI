@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Speech.Synthesis;
+using ShadowFlame;
 
 namespace Greed_CLI
 {
@@ -14,13 +14,9 @@ namespace Greed_CLI
         private const int PlayerCount = 2;
         private const string PlayerTypeHuman = "Human";
         private const string PlayerTypeComputer = "Computer";
-        private const int SpeechRate = 4;
-        private const int SpeechVolume = 100;
         private static readonly string LastGameFile = Path.Combine(ApplicationDirectory, "last game.txt");
         private static readonly string FullLogFile = Path.Combine(ApplicationDirectory, "full log.txt");
-        private static readonly string OptionsFile = Path.Combine(ApplicationDirectory, "options.txt");
-
-        private static int round;
+                private static int round;
         private static int rollNumber;
         private static int firstDieA, firstDieB;
         private static int currentDieA, currentDieB;
@@ -28,8 +24,8 @@ namespace Greed_CLI
         private static int currentPlayerIndex;
         private static int roundScore;
         private static readonly Random random = new Random();
-        private static bool textToSpeech = false;
-        private static SpeechSynthesizer greedTalk;
+
+        private static readonly ShadowFlame.TTS tts = new ShadowFlame.TTS();
         #endregion
 
         private class PlayerInfo
@@ -45,67 +41,11 @@ namespace Greed_CLI
             new PlayerInfo()
         };
 
-        private static void WriteLog(string message = "", bool SameLine = false)
-        {
-            if (SameLine)
-            {
-                Console.Write(message);
-            }
-            else
-            {
-                Console.WriteLine(message);
-            }
-
-            if (textToSpeech && greedTalk != null && !string.IsNullOrWhiteSpace(message))
-            {
-                greedTalk.SpeakAsync(message);
-            }
-        }
-
         private static bool YesNoPrompt(string prompt)
         {
-            WriteLog(prompt, true);
+            tts.SpeakAndDisplay(prompt, true);
             ConsoleKeyInfo keyInfo = Console.ReadKey(true);
             return keyInfo.Key == ConsoleKey.Y ? true : false;
-        }
-
-        private static void SaveOptions()
-        {
-            using (StreamWriter writer = new StreamWriter(OptionsFile, false))
-
-            {
-                writer.WriteLine($"TextToSpeech={textToSpeech}");
-            }
-        }
-
-        private static void InitializeSpeechSynthesizer()
-        {
-            if (textToSpeech)
-            {
-                greedTalk = new SpeechSynthesizer
-                {
-                    Rate = SpeechRate,
-                    Volume = SpeechVolume
-                };
-            }
-        }
-
-        private static void LoadOptions()
-        {
-            if (File.Exists(OptionsFile))
-            {
-                using (StreamReader reader = new StreamReader(OptionsFile))
-                {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        if (line.StartsWith("TextToSpeech="))
-                        {
-                            textToSpeech = line.Substring("TextToSpeech=".Length).Trim().ToLower() == "true";
-                        }
-                    }
-                }
-            }
         }
 
         private static void PressKeyForNextPlayer()
@@ -114,11 +54,11 @@ namespace Greed_CLI
 
             if (nextPlayerIndex == 2 && round == 10)
             {
-                WriteLog("Press a key  for final Scores.");
+                tts.SpeakAndDisplay("Press a key  for final Scores.");
             }
             else
             {
-                WriteLog($"Press a key for {players[nextPlayerIndex].Name}'s turn.");
+                tts.SpeakAndDisplay($"Press a key for {players[nextPlayerIndex].Name}'s turn.");
             }
             Console.ReadKey(true);
         }
@@ -128,26 +68,26 @@ namespace Greed_CLI
             if (!isFinal)
             {
                 Console.Clear();
-                WriteLog($"Round {round} of {MaxRounds}");
+                tts.SpeakAndDisplay($"Round {round} of {MaxRounds}");
             }
 
-            WriteLog($"{players[0].Name}: {players[0].Score}, {players[1].Name}: {players[1].Score}");
+            tts.SpeakAndDisplay($"{players[0].Name}: {players[0].Score}, {players[1].Name}: {players[1].Score}");
 
             int difference = Math.Abs(players[0].Score - players[1].Score);
 
             if (players[0].Score > players[1].Score)
             {
                 string verb = isFinal ? "won" : "up";
-                WriteLog($"{players[0].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
+                tts.SpeakAndDisplay($"{players[0].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
             }
             else if (players[1].Score > players[0].Score)
             {
                 string verb = isFinal ? "won" : "up";
-                WriteLog($"{players[1].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
+                tts.SpeakAndDisplay($"{players[1].Name} {verb} by {difference}{(isFinal ? " points" : "")}.");
             }
             else
             {
-                WriteLog("Tie Game!");
+                tts.SpeakAndDisplay("Tie Game!");
             }
         }
 
@@ -155,7 +95,7 @@ namespace Greed_CLI
         {
             if (currentRoll == firstRoll)
             {
-                WriteLog("BUSTED! No points scored.");
+                tts.SpeakAndDisplay("BUSTED! No points scored.");
                 PressKeyForNextPlayer();
                 return true;
             }
@@ -281,7 +221,7 @@ namespace Greed_CLI
             firstTotal = firstDieA + firstDieB;
             roundScore = firstTotal;
 
-            WriteLog($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
+            tts.SpeakAndDisplay($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
 
             int maxRolls = firstTotal + 1;
             rollNumber = 2;
@@ -292,7 +232,7 @@ namespace Greed_CLI
 
                 if (!ComputerShouldContinue(rollsRemaining, roundScore))
                 {
-                    WriteLog($"{players[currentPlayerIndex].Name} decides to stop rolling.");
+                    tts.SpeakAndDisplay($"{players[currentPlayerIndex].Name} decides to stop rolling.");
                     break;
                 }
 
@@ -302,7 +242,7 @@ namespace Greed_CLI
                 currentDieB = random.Next(MinDieValue, MaxDieValue);
                 currentTotal = currentDieA + currentDieB;
 
-                WriteLog($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
+                tts.SpeakAndDisplay($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
 
                 if (CheckForBust(rollNumber, firstTotal, currentTotal))
                 {
@@ -314,7 +254,7 @@ namespace Greed_CLI
             }
 
             players[currentPlayerIndex].Score += roundScore;
-            WriteLog($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
+            tts.SpeakAndDisplay($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
             PressKeyForNextPlayer();
         }
 
@@ -326,14 +266,14 @@ namespace Greed_CLI
             roundScore = firstTotal;
             rollNumber = 2;
 
-            WriteLog($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
+            tts.SpeakAndDisplay($"Roll 1: {firstDieA} & {firstDieB} - Total {firstTotal}");
 
             int maxRolls = firstTotal + 1;
 
             while (rollNumber <= maxRolls)
             {
-                WriteLog($"Press any key to roll again,");
-                WriteLog($" or 'S' to stop and keep {roundScore} points.");
+                tts.SpeakAndDisplay($"Press any key to roll again,");
+                tts.SpeakAndDisplay($" or 'S' to stop and keep {roundScore} points.");
                 Console.WriteLine();
                 ConsoleKeyInfo keyInfo = Console.ReadKey(true);
 
@@ -348,7 +288,7 @@ namespace Greed_CLI
 
 
 
-                WriteLog($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
+                tts.SpeakAndDisplay($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
 
                 if (CheckForBust(rollNumber, firstTotal, currentTotal))
                 {
@@ -360,7 +300,7 @@ namespace Greed_CLI
             }
 
             players[currentPlayerIndex].Score += roundScore;
-            WriteLog($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
+            tts.SpeakAndDisplay($"{players[currentPlayerIndex].Name} scored {roundScore} points.");
             PressKeyForNextPlayer();
         }
 
@@ -372,7 +312,7 @@ namespace Greed_CLI
                 {
                     DisplayScores();
                     Console.WriteLine();
-                    WriteLog($"{players[currentPlayerIndex].Name}'s Turn");
+                    tts.SpeakAndDisplay($"{players[currentPlayerIndex].Name}'s Turn");
 
                     if (players[currentPlayerIndex].PlayerType == PlayerTypeComputer)
                     {
@@ -388,7 +328,7 @@ namespace Greed_CLI
 
         private static void EndGame()
         {
-            WriteLog("FINAL SCORES:");
+            tts.SpeakAndDisplay("FINAL SCORES:");
             Console.WriteLine();
             DisplayScores(isFinal: true);
         }
@@ -401,12 +341,12 @@ namespace Greed_CLI
             do
             {
                 Console.WriteLine();
-                WriteLog($"Name of Player {displayNumber}: ", true);
+                tts.SpeakAndDisplay($"Name of Player {displayNumber}: ", true);
                 input = Console.ReadLine()?.Trim();
 
                 if (string.IsNullOrWhiteSpace(input))
                 {
-                    WriteLog($"Please give a name for player {displayNumber}"); return;
+                    tts.SpeakAndDisplay($"Please give a name for player {displayNumber}"); return;
                 }
             } while (string.IsNullOrWhiteSpace(input));
 
@@ -416,7 +356,7 @@ namespace Greed_CLI
         private static void GetPlayerType(int playerIndex)
         {
             Console.WriteLine();
-            WriteLog($"Is {players[playerIndex].Name} a Human or Computer Player? (H/C) ", true);
+            tts.SpeakAndDisplay($"Is {players[playerIndex].Name} a Human or Computer Player? (H/C) ", true);
 
             ConsoleKeyInfo keyInfo;
             while (true)
@@ -427,67 +367,13 @@ namespace Greed_CLI
                 {
                     case 'h':
                         players[playerIndex].PlayerType = PlayerTypeHuman;
-                        WriteLog("Human");
+                        tts.SpeakAndDisplay("Human");
                         return;
                     case 'c':
                         players[playerIndex].PlayerType = PlayerTypeComputer;
-                        WriteLog("Computer");
+                        tts.SpeakAndDisplay("Computer");
                         return;
                 }
-            }
-        }
-
-        private static void AskToggleSpeechSafe()
-        {
-            try
-            {
-                bool enable = YesNoPrompt("Enable text-to-speech? (Y/N) ");
-
-                if (enable)
-                {
-                    // If already initialized, keep it; otherwise attempt to (re)initialize safely.
-                    if (!textToSpeech || greedTalk == null)
-                    {
-                        try
-                        {
-                            greedTalk?.Dispose();
-                            greedTalk = new SpeechSynthesizer
-                            {
-                                Rate = SpeechRate,
-                                Volume = SpeechVolume
-                            };
-                            textToSpeech = true;
-                            greedTalk.SpeakAsync("Text to speech enabled.");
-                        }
-                        catch (Exception ex)
-                        {
-                            // Initialization failed; disable TTS to avoid later NullReference.
-                            textToSpeech = false;
-                            greedTalk = null;
-                            WriteLog($"Unable to initialize text-to-speech: {ex.Message}");
-                        }
-                    }
-                }
-                else
-                {
-                    // User chose to disable TTS
-                    textToSpeech = false;
-                    if (greedTalk != null)
-                    {
-                        greedTalk.Dispose();
-                        greedTalk = null;
-                    }
-                }
-
-                SaveOptions();
-            }
-            catch (Exception ex)
-            {
-                // Catch-all safety to ensure application remains usable even if something goes wrong.
-                textToSpeech = false;
-                greedTalk = null;
-                WriteLog($"Text-to-speech toggle failed: {ex.Message}");
-                SaveOptions();
             }
         }
 
@@ -498,25 +384,12 @@ namespace Greed_CLI
 
             Directory.CreateDirectory(ApplicationDirectory);
 
-            LoadOptions();
-            InitializeSpeechSynthesizer();
-            AskToggleSpeechSafe();
-
-            // Fail-safe: if the user enabled text-to-speech but the
-            // synthesizer failed to initialize, disable the option to
-            // avoid NullReferenceException later.
-            if (textToSpeech && greedTalk == null)
-            {
-                textToSpeech = false;
-                WriteLog("Text-to-speech could not be initialized and has been disabled.");
-            }
-
-
             Console.WriteLine();
-            WriteLog("This is a game of luck and skill. First you roll a pair of dice.");
-            WriteLog("Additional rolls add to your score, and you can stop at any");
-            WriteLog("time. If you repeat your first roll, you lose all points for");
-            WriteLog("the round. The winner is the player with the highest score.");
+            tts.SpeakAndDisplay("Welcome to Greed!  A dice ggame by HiTechCharles");
+            tts.SpeakAndDisplay("\n\nThis is a game of luck and skill. First you roll a pair of dice.");
+            tts.SpeakAndDisplay("Additional rolls add to your score, and you can stop at any");
+            tts.SpeakAndDisplay("time. If you repeat your first roll, you lose all points for");
+            tts.SpeakAndDisplay("the round. The winner is the player with the highest score.");
             Console.WriteLine();
 
             for (int i = 0; i < PlayerCount; i++)
@@ -527,12 +400,6 @@ namespace Greed_CLI
 
             GameLoop();
             EndGame();
-
-            // Proper cleanup of disposable resources
-            if (greedTalk != null)
-            {
-                greedTalk.Dispose();
-            }
 
             Console.ReadKey(true);
         }
