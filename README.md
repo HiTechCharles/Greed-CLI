@@ -48,9 +48,9 @@ The computer opponent uses intelligent decision-making based on:
 
 ## 🔧 Technical Details
 
-- **Framework**: .NET Framework 4.8.1
-- **Language**: C# 
-- **Platform**: Windows (Console Application)
+- **Framework**: .NET 10
+- **Language**: C#
+- **Platform**: Cross-platform (.NET console app)
 - **Features**:
   - Text-to-speech support (optional)
   - Human vs Human, Human vs Computer, or Computer vs Computer gameplay
@@ -60,27 +60,33 @@ The computer opponent uses intelligent decision-making based on:
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Windows OS
-- .NET Framework 4.8.1 or higher
-- Visual Studio 2022 or later (for development)
+
+- .NET 10 SDK
+- Visual Studio 2026 (optional) or any editor that supports .NET 10
 
 ### Running the Game
 
-#### From Source
+#### From Source (recommended)
 1. Clone the repository:
    ```bash
    git clone https://github.com/HiTechCharles/Greed-CLI.git
    cd Greed-CLI
    ```
 
-2. Open `Greed.sln` in Visual Studio
+2. Build and run with dotnet:
+   ```powershell
+   dotnet build
+   dotnet run --project Greed-CLI
+   ```
 
-3. Build and run the project (F5)
+#### From Visual Studio
+1. Open `Greed-CLI.slnx` in Visual Studio 2026
+2. Build and run (F5)
 
 #### From Executable
 1. Build the project in Release mode
-2. Navigate to `bin\Release\`
-3. Run `Greed.exe`
+2. Navigate to `bin\Release\net10.0` (or appropriate TFMs)
+3. Run the produced executable
 
 ## 🎯 Strategy Tips
 
@@ -94,7 +100,7 @@ The computer opponent uses intelligent decision-making based on:
 
 - **Any key**: Roll the dice (human player)
 - **S key**: Stop rolling and bank your points (human player)
-- **Y/N**: Enable/disable text-to-speech at game start
+- **Y/N**: Enable/disable text-to-speech on first game run
 - **H/C**: Choose Human or Computer player type
 
 ## 🛠️ Development
@@ -102,11 +108,11 @@ The computer opponent uses intelligent decision-making based on:
 ### Project Structure
 ```
 Greed-CLI/
-├── Program.cs           # Main game logic and AI
+├── Greed.cs             # Main game logic and entry point
 ├── Greed.csproj         # Project configuration
-├── App.config           # Application configuration
+├── Greed-CLI.slnx       # Solution file
 ├── Resources/
-│   └── Icon.ico         # Application icon
+│   └── Icon.ico         # Application icon (optional)
 └── Properties/
 	├── AssemblyInfo.cs
 	└── Resources.resx
