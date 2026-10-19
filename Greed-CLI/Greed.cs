@@ -25,7 +25,7 @@ namespace Greed_CLI
         private static int roundScore;
         private static readonly Random random = new Random();
 
-        private static readonly ShadowFlame.TTS tts = new ShadowFlame.TTS();
+        private static ConsoleTTS tts = new ConsoleTTS(); //text to speech object
         #endregion
 
         private class PlayerInfo
@@ -242,6 +242,7 @@ namespace Greed_CLI
                 currentDieB = random.Next(MinDieValue, MaxDieValue);
                 currentTotal = currentDieA + currentDieB;
 
+                
                 tts.SpeakAndDisplay($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
 
                 if (CheckForBust(rollNumber, firstTotal, currentTotal))
@@ -286,8 +287,7 @@ namespace Greed_CLI
                 currentDieB = random.Next(MinDieValue, MaxDieValue);
                 currentTotal = currentDieA + currentDieB;
 
-
-
+                tts.Stop(); // Stop any ongoing speech before speaking the next roll
                 tts.SpeakAndDisplay($"Roll {rollNumber}: {currentDieA} & {currentDieB} - Total {currentTotal}");
 
                 if (CheckForBust(rollNumber, firstTotal, currentTotal))
@@ -383,6 +383,7 @@ namespace Greed_CLI
             Console.ForegroundColor = ConsoleColor.White;
 
             Directory.CreateDirectory(ApplicationDirectory);
+            Task.WaitAll(tts?.InitializeAsync() ?? Task.CompletedTask);  //
 
             Console.WriteLine();
             tts.SpeakAndDisplay("Welcome to Greed!  A dice ggame by HiTechCharles");
